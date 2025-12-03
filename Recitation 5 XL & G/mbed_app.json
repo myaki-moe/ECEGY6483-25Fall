@@ -1,0 +1,15 @@
+{
+    "macros": [
+        "ARM_MATH_CM4",
+        "__FPU_PRESENT=1"
+    ],
+    "target_overrides": {
+        "*": {
+            "platform.stdio-baud-rate": 115200,
+            "platform.stdio-convert-newlines": true,
+            "platform.minimal-printf-enable-floating-point": true,
+            "target.components_add": ["SD"],
+            "target.features_add": ["DSP"]
+        }
+    }
+}
