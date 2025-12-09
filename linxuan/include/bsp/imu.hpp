@@ -24,4 +24,5 @@ bool imu_read_acc_data(float* acc);
 bool imu_read_gyro_data(float* gyro);
 bool imu_init();
 bool imu_data_ready();
+bool imu_data_wait();
 void imu_data_ready_clear();

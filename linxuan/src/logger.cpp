@@ -1,8 +1,9 @@
 #include "logger.hpp"
 #include "mbed.h"
+#include "bsp/serial.hpp"
 
-// 全局日志级别（默认DEBUG，显示所有日志）
-LogLevel_t g_log_level = LOG_LEVEL_DEBUG;
+// 全局日志级别（默认INFO，显示INFO及以上日志）
+LogLevel_t g_log_level = LOG_LEVEL_INFO;
 
 // 日志级别字符串
 static const char* log_level_strings[] = {
@@ -46,6 +47,8 @@ void log_print(LogLevel_t level, const char* format, ...) {
         return;
     }
 
+    serial_lock();
+
     // 获取时间戳
     auto now = Kernel::Clock::now().time_since_epoch();
     uint64_t ms_total = chrono::duration_cast<chrono::milliseconds>(now).count();
@@ -69,4 +72,6 @@ void log_print(LogLevel_t level, const char* format, ...) {
 
     // 换行
     printf("\r\n");
+
+    serial_unlock();
 }

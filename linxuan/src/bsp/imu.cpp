@@ -3,7 +3,7 @@
 
 I2C *imu_i2c = nullptr;
 InterruptIn *imu_int1_pin = nullptr;
-volatile bool data_ready_flag = false;
+EventFlags *imu_data_ready_flag = nullptr;
 
 // Write a single byte to a register
 bool imu_write_reg(uint8_t reg, uint8_t val) {
@@ -63,8 +63,8 @@ bool imu_init() {
     imu_i2c = new I2C(PB_11, PB_10);
     imu_i2c->frequency(400000);
     imu_int1_pin = new InterruptIn(LSM6DSL_INT1_PIN, PullDown);
-    imu_int1_pin->rise([] { data_ready_flag = true; });
-
+    imu_int1_pin->rise([] { imu_data_ready_flag->set(1); });
+    imu_data_ready_flag = new EventFlags();
     uint8_t who;
     if (!imu_read_reg(WHO_AM_I, who) || who != 0x6A) return false;
     imu_write_reg(CTRL3_C, 0x44); 
@@ -76,9 +76,13 @@ bool imu_init() {
 }
 
 bool imu_data_ready() {
-    return data_ready_flag;
+    return (imu_data_ready_flag->get() & 1) == 1;
+}
+
+bool imu_data_wait() {
+    return imu_data_ready_flag->wait_all(1, osWaitForever) == 1;
 }
 
 void imu_data_ready_clear() {
-    data_ready_flag = false;
+    imu_data_ready_flag->clear(1);
 }

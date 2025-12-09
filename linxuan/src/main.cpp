@@ -1,8 +1,12 @@
+#include "main.hpp"
 #include "mbed.h"
 #include "bsp/led.hpp"
 #include "bsp/serial.hpp"
 #include "bsp/imu.hpp"
 #include "logger.hpp"
+#include "tasks/imu_task.hpp"
+#include "tasks/led_task.hpp"
+#include "tasks/test_task.hpp"
 
 void hardware_error_handler() {
     while (true) {
@@ -16,6 +20,7 @@ void hardware_error_handler() {
         ThisThread::sleep_for(250ms);
     }
 }
+
 
 int main() {
 
@@ -42,10 +47,12 @@ int main() {
     LOG_INFO("    - Xu, Lixuan");
     LOG_INFO("");
     LOG_INFO("========================================");
-    LOG_INFO("Build Date: " __DATE__ " " __TIME__);
     LOG_INFO("");
-    LOG_INFO("Serial initialization [OK]");
+    LOG_INFO("Version: " BUILD_VERSION " ");
+    LOG_INFO("Build Date: " __DATE__ " " __TIME__);
+    LOG_INFO("Hardware initialization...");
     LOG_INFO("LED initialization [OK]");
+    LOG_INFO("Serial initialization [OK]");
 
     if (!imu_init()) {
         LOG_ERROR("IMU initialization [FAIL]");
@@ -53,18 +60,17 @@ int main() {
     }
     LOG_INFO("IMU initialization [OK]");
 
-    while (true) {
-        if (imu_data_ready()) {
-            imu_data_ready_clear();
-            float acc[3];
-            float gyro[3];
-            if (imu_read_acc_data(acc)) {
-                // LOG_INFO("Acc: %.3f, %.3f, %.3f", acc[0], acc[1], acc[2]);
-            }
-            if (imu_read_gyro_data(gyro)) {
-                // LOG_INFO("Gyro: %.2f, %.2f, %.2f", gyro[0], gyro[1], gyro[2]);
-            }
-        }
-        ThisThread::sleep_for(1ms);
+    Thread imu_thread(osPriorityHigh, OS_STACK_SIZE, nullptr, "imu_task");
+    Thread fft_thread(osPriorityNormal, OS_STACK_SIZE, nullptr, "fft_task");
+    Thread led_thread(osPriorityLow, OS_STACK_SIZE, nullptr, "led_task");
+    Thread test_thread(osPriorityLow, OS_STACK_SIZE, nullptr, "test_task");
+
+    imu_thread.start(imu_task);
+    // fft_thread.start(fft_task);
+    led_thread.start(led_task);
+    test_thread.start(test_task);
+
+    while (true) { 
+        ThisThread::sleep_for(2000ms);
     }
 }
