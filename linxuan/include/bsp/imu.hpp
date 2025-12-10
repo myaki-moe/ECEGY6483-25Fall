@@ -19,10 +19,11 @@
 #define ACC_SENSITIVITY     0.000061f 
 #define GYRO_SENSITIVITY    0.00875f
 
+#include <time.h>
 
 bool imu_read_acc_data(float* acc);
 bool imu_read_gyro_data(float* gyro);
 bool imu_init();
 bool imu_data_ready();
-bool imu_data_wait();
+bool imu_data_wait(time_t timeout);
 void imu_data_ready_clear();

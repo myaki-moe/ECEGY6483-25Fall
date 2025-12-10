@@ -7,28 +7,36 @@
 #include "tasks/imu_task.hpp"
 #include "tasks/led_task.hpp"
 #include "tasks/test_task.hpp"
+#include "tasks/fft_task.hpp"
 
-void hardware_error_handler() {
+EventFlags *program_fatal_error_flag = nullptr;
+
+void fatal_error_handler() {
     while (true) {
         led_green_1_set(1);
         led_green_2_set(1);
         led_blue_yellow_on();
-        ThisThread::sleep_for(250ms);
+        ThisThread::sleep_for(500ms);
         led_green_1_set(0);
         led_green_2_set(0);
         led_blue_yellow_off();
-        ThisThread::sleep_for(250ms);
+        ThisThread::sleep_for(500ms);
+        LOG_FATAL("**FATAL ERROR**");
     }
+}
+
+void trigger_fatal_error() {
+    program_fatal_error_flag->set(1);
 }
 
 
 int main() {
 
     if (!led_init()) {
-        hardware_error_handler();
+        fatal_error_handler();
     }
     if (!serial_init()) {
-        hardware_error_handler();
+        fatal_error_handler();
     }
 
     LOG_INFO("");
@@ -55,22 +63,37 @@ int main() {
     LOG_INFO("Serial initialization [OK]");
 
     if (!imu_init()) {
-        LOG_ERROR("IMU initialization [FAIL]");
-        hardware_error_handler();
+        LOG_FATAL("IMU initialization [FAIL]");
+        fatal_error_handler();
     }
     LOG_INFO("IMU initialization [OK]");
 
+    program_fatal_error_flag = new EventFlags();
+
+    LOG_INFO("Starting tasks...");
     Thread imu_thread(osPriorityHigh, OS_STACK_SIZE, nullptr, "imu_task");
     Thread fft_thread(osPriorityNormal, OS_STACK_SIZE, nullptr, "fft_task");
     Thread led_thread(osPriorityLow, OS_STACK_SIZE, nullptr, "led_task");
     Thread test_thread(osPriorityLow, OS_STACK_SIZE, nullptr, "test_task");
 
     imu_thread.start(imu_task);
-    // fft_thread.start(fft_task);
+    fft_thread.start(fft_task);
     led_thread.start(led_task);
     test_thread.start(test_task);
 
-    while (true) { 
-        ThisThread::sleep_for(2000ms);
+    LOG_INFO("Tasks startup complete");
+
+    if (program_fatal_error_flag->wait_all(1, osWaitForever) == 1) {
+        LOG_FATAL("Program fatal error, terminating all tasks");
+
+        Thread* threads[] = { &imu_thread, &fft_thread, &led_thread, &test_thread };
+        for (Thread* t : threads) {
+            if (t->get_state() != Thread::Deleted && t->get_state() != Thread::Inactive) {
+                t->terminate();
+            }
+        }
+        fatal_error_handler();
     }
+
+    return 0;
 }

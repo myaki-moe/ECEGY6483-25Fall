@@ -79,8 +79,8 @@ bool imu_data_ready() {
     return (imu_data_ready_flag->get() & 1) == 1;
 }
 
-bool imu_data_wait() {
-    return imu_data_ready_flag->wait_all(1, osWaitForever) == 1;
+bool imu_data_wait(time_t timeout) {
+    return imu_data_ready_flag->wait_all(1, timeout) == 1;
 }
 
 void imu_data_ready_clear() {

@@ -1,6 +1,7 @@
 #include "tasks/test_task.hpp"
 #include "mbed.h"
 #include "logger.hpp"
+#include "main.hpp"
 
 
 uint64_t prev_idle_time = 0;
@@ -26,7 +27,7 @@ void test_task() {
         prev_idle_time = stats.idle_time;
         
         // 打印统计信息
-        LOG_INFO("Idle: %d%%   Usage: %d%%", idle, usage);     // 占用率
+        LOG_DEBUG("Idle: %d%%   Usage: %d%%", idle, usage);     // 占用率
 
         ThisThread::sleep_for(SAMPLE_TIME_MS * 1ms);
     }
