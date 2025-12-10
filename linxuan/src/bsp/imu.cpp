@@ -38,22 +38,22 @@ bool imu_read_int16(uint8_t reg_low, int16_t &val) {
     return true;
 }
 
-bool imu_read_acc_data(float* acc) {
+bool imu_read_acc_data(float32_t* acc) {
     int16_t acc_raw;
     // Read X, Y, Z axis in order (OUTX_L_XL, OUTY_L_XL, OUTZ_L_XL are consecutive every 2 bytes)
     for (int i = 0; i < 3; i++) {
         if (!imu_read_int16(OUTX_L_XL + i*2, acc_raw)) return false;
-        acc[i] = (float)acc_raw * ACC_SENSITIVITY;
+        acc[i] = (float32_t)acc_raw * ACC_SENSITIVITY;
     }
     return true;
 }
 
-bool imu_read_gyro_data(float* gyro) {
+bool imu_read_gyro_data(float32_t* gyro) {
     int16_t gyro_raw;
     // Read X, Y, Z axis in order (OUTX_L_G, OUTY_L_G, OUTZ_L_G are consecutive every 2 bytes)
     for (int i = 0; i < 3; i++) {
         if (!imu_read_int16(OUTX_L_G + i*2, gyro_raw)) return false;
-        gyro[i] = (float)gyro_raw * GYRO_SENSITIVITY;
+        gyro[i] = (float32_t)gyro_raw * GYRO_SENSITIVITY;
     }
     return true;
 }
@@ -68,8 +68,8 @@ bool imu_init() {
     uint8_t who;
     if (!imu_read_reg(WHO_AM_I, who) || who != 0x6A) return false;
     imu_write_reg(CTRL3_C, 0x44); 
-    imu_write_reg(CTRL1_XL, 0x30); 
-    imu_write_reg(CTRL2_G, 0x30); 
+    imu_write_reg(CTRL1_XL, 0x40); 
+    imu_write_reg(CTRL2_G, 0x40);
     imu_write_reg(INT1_CTRL, 0x01); 
     imu_write_reg(DRDY_PULSE_CFG, 0x80);
     return true;

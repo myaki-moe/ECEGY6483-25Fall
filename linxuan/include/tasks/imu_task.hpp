@@ -3,13 +3,13 @@
 #include <stdint.h>
 #include <time.h>
 #include "mbed.h"
+#include "arm_math.h"
+#include "bsp/imu.hpp"
 
-
-#define IMU_SAMPLE_RATE_HZ 52.0f
 
 typedef struct imu_data_t {
-    float accel[3];
-    float gyro[3];
+    float32_t accel[3];
+    float32_t gyro[3];
     std::chrono::time_point<rtos::Kernel::Clock> timestamp;
 } imu_data_t;
 

@@ -1,6 +1,5 @@
 #include "tasks/imu_task.hpp"
 #include "mbed.h"
-#include "bsp/imu.hpp"
 #include "logger.hpp"
 #include "main.hpp"
 
