@@ -27,13 +27,13 @@ void imu_task() {
                 imu_data->timestamp = Kernel::Clock::now();
 
                 if (!imu_read_acc_data(imu_data->accel)) {
-                    LOG_ERROR("Failed to read accel data");
+                    LOG_WARN("Failed to read accel data");
                     imu_mail_box->free(imu_data);
                     continue;
                 }
 
                 if (!imu_read_gyro_data(imu_data->gyro)) {
-                    LOG_ERROR("Failed to read gyro data");
+                    LOG_WARN("Failed to read gyro data");
                     imu_mail_box->free(imu_data);
                     continue;
                 }
@@ -41,12 +41,12 @@ void imu_task() {
                 LOG_DEBUG("accel: %.2f, %.2f, %.2f | gyro: %.2f, %.2f, %.2f", imu_data->accel[0], imu_data->accel[1], imu_data->accel[2], imu_data->gyro[0], imu_data->gyro[1], imu_data->gyro[2]);
                 imu_mail_box->put(imu_data);
             } else {
-                LOG_ERROR("Failed to allocate IMU data");
+                LOG_WARN("Failed to allocate IMU mail box");
                 imu_mail_box->free(imu_data);
                 continue;
             }
         } else {
-            LOG_FATAL("IMU data waittimeout");
+            LOG_FATAL("IMU data wait timeout");
             trigger_fatal_error();
             return;
         }
