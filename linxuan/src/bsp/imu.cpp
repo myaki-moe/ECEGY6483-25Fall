@@ -53,7 +53,7 @@ bool imu_read_gyro_data(float32_t* gyro) {
     // Read X, Y, Z axis in order (OUTX_L_G, OUTY_L_G, OUTZ_L_G are consecutive every 2 bytes)
     for (int i = 0; i < 3; i++) {
         if (!imu_read_int16(OUTX_L_G + i*2, gyro_raw)) return false;
-        gyro[i] = (float32_t)gyro_raw * GYRO_SENSITIVITY;
+        gyro[i] = (float32_t)gyro_raw * GYRO_SENSITIVITY / 360.0f * 2.0f * M_PI;
     }
     return true;
 }

@@ -8,6 +8,7 @@
 #include "tasks/led_task.hpp"
 #include "tasks/test_task.hpp"
 #include "tasks/fft_task.hpp"
+#include "tasks/analysis_task.hpp"
 
 EventFlags *program_fatal_error_flag = nullptr;
 
@@ -71,13 +72,15 @@ int main() {
     program_fatal_error_flag = new EventFlags();
 
     LOG_INFO("Starting tasks...");
-    Thread imu_thread(osPriorityHigh, OS_STACK_SIZE, nullptr, "imu_task");
-    Thread fft_thread(osPriorityNormal, OS_STACK_SIZE, nullptr, "fft_task");
-    Thread led_thread(osPriorityLow, OS_STACK_SIZE, nullptr, "led_task");
+    Thread imu_thread(osPriorityRealtime, OS_STACK_SIZE, nullptr, "imu_task");
+    Thread fft_thread(osPriorityHigh, OS_STACK_SIZE, nullptr, "fft_task");
+    Thread analysis_thread(osPriorityHigh, OS_STACK_SIZE, nullptr, "analysis_task");
+    Thread led_thread(osPriorityNormal, OS_STACK_SIZE, nullptr, "led_task");
     Thread test_thread(osPriorityLow, OS_STACK_SIZE, nullptr, "test_task");
 
     imu_thread.start(imu_task);
     fft_thread.start(fft_task);
+    analysis_thread.start(analysis_task);
     led_thread.start(led_task);
     test_thread.start(test_task);
 
@@ -86,7 +89,7 @@ int main() {
     if (program_fatal_error_flag->wait_all(1, osWaitForever) == 1) {
         LOG_FATAL("Program fatal error, terminating all tasks");
 
-        Thread* threads[] = { &imu_thread, &fft_thread, &led_thread, &test_thread };
+        Thread* threads[] = { &imu_thread, &fft_thread, &analysis_thread, &led_thread, &test_thread };
         for (Thread* t : threads) {
             if (t->get_state() != Thread::Deleted && t->get_state() != Thread::Inactive) {
                 t->terminate();

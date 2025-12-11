@@ -6,8 +6,7 @@
 #include "tasks/imu_task.hpp"
 
 
-#define ANALYSIS_WINDOW_SIZE 3
-#define FFT_BUFFER_SIZE (IMU_SAMPLE_RATE_HZ * ANALYSIS_WINDOW_SIZE)
+#define FFT_BUFFER_SIZE 128
 #define FFT_BUFFER_NUM 2
 
 
