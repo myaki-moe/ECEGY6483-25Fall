@@ -3,86 +3,128 @@
 #include "logger.hpp"
 #include "main.hpp"
 #include "tasks/fft_task.hpp"
+#include "bool_filter.hpp"
 
 
-bool detectTremor(float32_t* psd, int fft_size, float32_t sampling_rate, float32_t* tremor_intensity, float32_t* tremor_frequency) {
+bool_filter_t tremor_filter;
+bool_filter_t dyskinesia_filter;
+bool_filter_t fog_filter;
 
-    int tremor_min_idx = (int)(TREMOR_MIN_FREQ * fft_size / IMU_SAMPLE_RATE_HZ);
-    int tremor_max_idx = (int)(TREMOR_MAX_FREQ * fft_size / IMU_SAMPLE_RATE_HZ);
-    int band_min_idx = (int)(BAND_MIN_FREQ * fft_size / IMU_SAMPLE_RATE_HZ);
-    int band_max_idx = (int)(BAND_MAX_FREQ * fft_size / IMU_SAMPLE_RATE_HZ);
 
-    // ===== 步骤2: 寻找3-5Hz范围内的峰值 =====
-    float peak_power = 0;
-    int peak_idx = 0;
-
-    for (int i = tremor_min_idx; i <= tremor_max_idx; i++) {
-        if (psd[i] > peak_power) {
-        peak_power = psd[i];
-        peak_idx = i;
+void find_peak_power(float32_t* psd, uint32_t fft_size, float32_t sampling_rate, float32_t min_freq, float32_t max_freq, float32_t* peak_power, float32_t* peak_freq) {
+    float32_t peak_power_temp = 0.0f;
+    float32_t peak_freq_temp = 0.0f;
+    uint32_t min_idx = (uint32_t)(min_freq * fft_size / sampling_rate);
+    uint32_t max_idx = (uint32_t)(max_freq * fft_size / sampling_rate);
+    for (uint32_t i = min_idx; i <= max_idx; i++) {
+        if (psd[i] > peak_power_temp) {
+            peak_power_temp = psd[i];
+            peak_freq_temp = (float32_t)i * sampling_rate / fft_size;
         }
     }
+    *peak_power = peak_power_temp;
+    *peak_freq = peak_freq_temp;
+}
 
-    // 计算峰值频率
-    float peak_freq = (float)peak_idx * IMU_SAMPLE_RATE_HZ / fft_size;
-
-    // ===== 步骤3: 计算峰值周围的功率（±0.5Hz窗口）=====
-    float peak_window_power = 0;
-    int window_size = (int)(0.5 * fft_size / IMU_SAMPLE_RATE_HZ);
-
-    for (int i = peak_idx - window_size; i <= peak_idx + window_size; i++) {
-        if (i >= 0 && i < fft_size/2) {
-        peak_window_power += psd[i];
-        }
+float32_t find_total_band_power(float32_t* psd, uint32_t fft_size, float32_t sampling_rate, float32_t min_freq, float32_t max_freq) {
+    uint32_t min_idx = (uint32_t)(min_freq * fft_size / sampling_rate);
+    uint32_t max_idx = (uint32_t)(max_freq * fft_size / sampling_rate);
+    float32_t total_band_power = 0.0f;
+    for (uint32_t i = min_idx; i <= max_idx; i++) {
+        total_band_power += psd[i];
     }
+    return total_band_power;
+}
 
-    // ===== 步骤4: 计算总频段功率 =====
-    float total_band_power = 0;
-    for (int i = band_min_idx; i <= band_max_idx; i++) {
-    total_band_power += psd[i];
-    }
+bool detectTremor(float32_t* psd, uint32_t fft_size, float32_t sampling_rate) {
+    float32_t band_peak_power = 0.0f;
+    float32_t band_peak_freq = 0.0f;
 
-    // ===== 步骤5: 计算相对功率 =====
-    float relative_power = peak_window_power / (total_band_power + 1e-6);  // 防止除零
+    find_peak_power(psd, fft_size, sampling_rate, BAND_MIN_FREQ, BAND_MAX_FREQ, &band_peak_power, &band_peak_freq);
+    float32_t tremor_total_power = find_total_band_power(psd, fft_size, sampling_rate, TREMOR_MIN_FREQ, TREMOR_MAX_FREQ);
+    float32_t total_band_power = find_total_band_power(psd, fft_size, sampling_rate, BAND_MIN_FREQ, BAND_MAX_FREQ);
 
-    // LOG_INFO("peak_power: %.2f, peak_freq: %.2f, relative_power: %.2f, total_band_power: %.2f", peak_power, peak_freq, relative_power, total_band_power);
+    float32_t relative_power = tremor_total_power / (total_band_power + 1e-6);
 
-    // ===== 步骤6: 三重判定 =====
-    #define RELATIVE_POWER_THRESHOLD 0.5f  // 50%
-    #define MIN_PEAK_POWER_THRESHOLD 0.05f  // 根据实际调整
-
-    // 条件1: 频率在3-5Hz
-    bool freq_check = (peak_freq >= TREMOR_MIN_FREQ && peak_freq <= TREMOR_MAX_FREQ);
-
-    // 条件2: 相对功率 > 50%
+    bool freq_check = (band_peak_freq >= TREMOR_MIN_FREQ && band_peak_freq <= TREMOR_MAX_FREQ);
     bool relative_power_check = (relative_power > RELATIVE_POWER_THRESHOLD);
+    bool absolute_power_check = (band_peak_power > MIN_PEAK_POWER_THRESHOLD);
 
-    // 条件3: 绝对功率 > 阈值
-    bool absolute_power_check = (peak_power > MIN_PEAK_POWER_THRESHOLD);
+    LOG_DEBUG("freq_check: %.1f <%s> , relative_power_check: %.1f <%s>, absolute_power_check: %.1f <%s>", 
+        band_peak_freq, freq_check ? "true " : "false", relative_power, relative_power_check ? "true " : "false", band_peak_power, absolute_power_check ? "true " : "false");
 
-    // 综合判定
-    *tremor_frequency = peak_freq;
-    *tremor_intensity = sqrtf(peak_power);  // 强度 = 功率的平方根
-    if (freq_check && relative_power_check && absolute_power_check) {
-        return true;
-    }
+    return (freq_check && relative_power_check && absolute_power_check);
+}
 
-    return false;
+bool detectDyskinesia(float32_t* psd, uint32_t fft_size, float32_t sampling_rate) {
+    float32_t band_peak_power = 0.0f;
+    float32_t band_peak_freq = 0.0f;
+
+    find_peak_power(psd, fft_size, sampling_rate, BAND_MIN_FREQ, BAND_MAX_FREQ, &band_peak_power, &band_peak_freq);
+    float32_t dyskinesia_total_power = find_total_band_power(psd, fft_size, sampling_rate, DYSKINESIA_MIN_FREQ, DYSKINESIA_MAX_FREQ);
+    float32_t total_band_power = find_total_band_power(psd, fft_size, sampling_rate, BAND_MIN_FREQ, BAND_MAX_FREQ);
+
+    float32_t relative_power = dyskinesia_total_power / (total_band_power + 1e-6);
+
+    bool freq_check = (band_peak_freq >= DYSKINESIA_MIN_FREQ && band_peak_freq <= DYSKINESIA_MAX_FREQ);
+    bool relative_power_check = (relative_power > RELATIVE_POWER_THRESHOLD);
+    bool absolute_power_check = (band_peak_power > MIN_PEAK_POWER_THRESHOLD);
+
+    LOG_DEBUG("freq_check: %.1f <%s> , relative_power_check: %.1f <%s>, absolute_power_check: %.1f <%s>", 
+        band_peak_freq, freq_check ? "true " : "false", relative_power, relative_power_check ? "true " : "false", band_peak_power, absolute_power_check ? "true " : "false");
+
+    return (freq_check && relative_power_check && absolute_power_check);
 }
 
 
 void analysis_task() {
     LOG_INFO("Analysis Task Started");
 
+    bool_filter_init(&tremor_filter, 2);
+    bool_filter_init(&dyskinesia_filter, 2);
+    bool_filter_init(&fog_filter, 2);
+
     while (true) {
-        float tremor_intensity_x = 0;
-        float tremor_freq_x = 0;
         fft_result_t *result = fft_find_and_lock_latest_result();
         if (result != nullptr) {
-            bool is_tremor_x = detectTremor(result->gyro_psd[0], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ, &tremor_intensity_x, &tremor_freq_x);
-            LOG_INFO("X axis: Tremor detected %s at frequency: %.2f Hz with intensity: %.2f", is_tremor_x ? "true" : "false", tremor_freq_x, tremor_intensity_x);
+            bool tremor_result[3] = {false, false, false};
+            bool dyskinesia_result[3] = {false, false, false};
+            for (int i = 0; i < 3; i++) {
+                tremor_result[i] = detectTremor(result->gyro_psd[i], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
+            }
+            for (int i = 0; i < 3; i++) {
+                dyskinesia_result[i] = detectDyskinesia(result->gyro_psd[i], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
+            }
+            bool is_tremor = tremor_result[0] || tremor_result[1] || tremor_result[2];
+            bool is_dyskinesia = dyskinesia_result[0] || dyskinesia_result[1] || dyskinesia_result[2];
+            bool is_fog = false;
+            LOG_DEBUG("tremor: %s %s %s, dyskinesia: %s %s %s, overall: %s %s", 
+                tremor_result[0] ? "true" : "false", tremor_result[1] ? "true" : "false", tremor_result[2] ? "true" : "false", 
+                dyskinesia_result[0] ? "true" : "false", dyskinesia_result[1] ? "true" : "false", dyskinesia_result[2] ? "true" : "false",
+                 is_tremor ? "true" : "false", is_dyskinesia ? "true" : "false");
             result->mutex.unlock();
+
+            bool_filter_update(&tremor_filter, is_tremor);
+            bool_filter_update(&dyskinesia_filter, is_dyskinesia);
+            bool_filter_update(&fog_filter, is_fog);
+        } else {
+            LOG_WARN("No FFT result available");
+            ThisThread::sleep_for(1ms);
+            continue;
         }
-        ThisThread::sleep_for(1ms);
+        ThisThread::sleep_for(100ms);
     }
+}
+
+
+bool get_tremor_status() {
+    return bool_filter_get_state(&tremor_filter);
+}
+
+bool get_dyskinesia_status() {
+    return bool_filter_get_state(&dyskinesia_filter);
+}
+
+bool get_fog_status() {
+    return bool_filter_get_state(&fog_filter);
 }
