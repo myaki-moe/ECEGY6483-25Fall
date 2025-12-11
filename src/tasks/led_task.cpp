@@ -13,7 +13,12 @@ void led_task() {
 
     while (true) {
         if (get_fog_status()) {
-            led_blue_yellow_on();
+            for (int i = 0; i < 5; i++) {
+                led_blue_yellow_on();
+                ThisThread::sleep_for(500ms);
+                led_blue_yellow_off();
+                ThisThread::sleep_for(500ms);
+            }
         } else if (get_dyskinesia_status()) {
             led_yellow_on();
         } else if (get_tremor_status()) {
