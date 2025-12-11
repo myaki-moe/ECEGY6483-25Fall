@@ -84,6 +84,10 @@ void analysis_task() {
     bool_filter_init(&dyskinesia_filter, 2);
     bool_filter_init(&fog_filter, 2);
 
+    bool last_tremor_status = false;
+    bool last_dyskinesia_status = false;
+    bool last_fog_status = false;
+
     while (true) {
         fft_result_t *result = fft_find_and_lock_latest_result();
         if (result != nullptr) {
@@ -107,6 +111,19 @@ void analysis_task() {
             bool_filter_update(&tremor_filter, is_tremor);
             bool_filter_update(&dyskinesia_filter, is_dyskinesia);
             bool_filter_update(&fog_filter, is_fog);
+
+            if (last_tremor_status != is_tremor) {
+                last_tremor_status = is_tremor;
+                LOG_INFO("Tremor status changed to %s", is_tremor ? "true" : "false");
+            }
+            if (last_dyskinesia_status != is_dyskinesia) {
+                last_dyskinesia_status = is_dyskinesia;
+                LOG_INFO("Dyskinesia status changed to %s", is_dyskinesia ? "true" : "false");
+            }
+            if (last_fog_status != is_fog) {
+                last_fog_status = is_fog;
+                LOG_INFO("FOG status changed to %s", is_fog ? "true" : "false");
+            }
         } else {
             LOG_WARN("No FFT result available");
             ThisThread::sleep_for(1ms);

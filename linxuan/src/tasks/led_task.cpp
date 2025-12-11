@@ -3,6 +3,7 @@
 #include "bsp/led.hpp"
 #include "logger.hpp"
 #include "tasks/analysis_task.hpp"
+#include "tasks/ble_task.hpp"
 
 void led_task() {
     LOG_INFO("LED Task Started");
@@ -21,9 +22,16 @@ void led_task() {
             led_blue_yellow_off();
         }
         
+
+        if (ble_is_connected()) {
+            led_green_2_set(1);
+        } else {
+            led_green_2_set(0);
+        }
+
         if (led_direction) {
             led_value += 0.025f;
-            if (led_value > 1.0f) {
+            if (led_value > 0.75f) {
                 led_direction = false;
             }
         } else {
@@ -33,7 +41,6 @@ void led_task() {
             }
         }
         led_green_1_set(led_value);
-        led_green_2_set(led_value);
         ThisThread::sleep_for(50ms);
 
     }
