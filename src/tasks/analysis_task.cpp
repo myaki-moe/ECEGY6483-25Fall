@@ -148,8 +148,9 @@ void analysis_task() {
             for (int i = 0; i < 3; i++) {
                 dyskinesia_result[i] = detectDyskinesia(result->gyro_psd[i], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
             }
-
-            fog_result[1] = detectFOG(result->accel_psd[1], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
+            for (int i = 0; i < 3; i++) {
+                fog_result[i] = detectFOG(result->accel_psd[i], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
+            }
             
             bool is_tremor = tremor_result[0] || tremor_result[1] || tremor_result[2];
             bool is_dyskinesia = dyskinesia_result[0] || dyskinesia_result[1] || dyskinesia_result[2];
@@ -167,18 +168,19 @@ void analysis_task() {
             bool_filter_update(&dyskinesia_filter, is_dyskinesia);
             bool_filter_update(&fog_filter, is_fog);
 
-            if (last_tremor_status != is_tremor) {
-                last_tremor_status = is_tremor;
-                LOG_INFO("Tremor status changed to %s", is_tremor ? "true" : "false");
+            if (last_tremor_status != is_tremor && is_tremor == true) {
+                LOG_INFO("Tremor detected!");
             }
-            if (last_dyskinesia_status != is_dyskinesia) {
-                last_dyskinesia_status = is_dyskinesia;
-                LOG_INFO("Dyskinesia status changed to %s", is_dyskinesia ? "true" : "false");
+            if (last_dyskinesia_status != is_dyskinesia && is_dyskinesia == true) {
+                LOG_INFO("Dyskinesia detected!");
             }
-            if (last_fog_status != is_fog) {
-                last_fog_status = is_fog;
-                LOG_INFO("FOG status changed to %s", is_fog ? "true" : "false");
+            if (last_fog_status != is_fog && is_fog == true) {
+                LOG_INFO("FOG detected!");
             }
+
+            last_tremor_status = is_tremor;
+            last_dyskinesia_status = is_dyskinesia;
+            last_fog_status = is_fog;
         } else {
             LOG_WARN("No FFT result available");
             ThisThread::sleep_for(1ms);

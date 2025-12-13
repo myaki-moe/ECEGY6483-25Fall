@@ -68,8 +68,8 @@ bool imu_init() {
     uint8_t who;
     if (!imu_read_reg(WHO_AM_I, who) || who != 0x6A) return false;
     imu_write_reg(CTRL3_C, 0x44); 
-    imu_write_reg(CTRL1_XL, 0x40); 
-    imu_write_reg(CTRL2_G, 0x40);
+    imu_write_reg(CTRL1_XL, 0x50); 
+    imu_write_reg(CTRL2_G, 0x50);
     imu_write_reg(INT1_CTRL, 0x01); 
     imu_write_reg(DRDY_PULSE_CFG, 0x80);
     return true;

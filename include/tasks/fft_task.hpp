@@ -6,7 +6,7 @@
 #include "tasks/imu_task.hpp"
 
 
-#define FFT_BUFFER_SIZE 128
+#define FFT_BUFFER_SIZE 256
 #define FFT_BUFFER_NUM 2
 
 

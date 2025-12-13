@@ -1,6 +1,6 @@
 #pragma once
 
-#define BUILD_VERSION "1.0.1"
+#define BUILD_VERSION "1.0.3"
 
 #include "mbed.h"
 

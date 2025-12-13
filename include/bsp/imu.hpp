@@ -19,7 +19,7 @@
 #define ACC_SENSITIVITY     0.000061f 
 #define GYRO_SENSITIVITY    0.00875f
 
-#define IMU_SAMPLE_RATE_HZ 104
+#define IMU_SAMPLE_RATE_HZ 208
 
 #include <time.h>
 #include "arm_math.h"
