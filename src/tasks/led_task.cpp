@@ -1,3 +1,8 @@
+/**
+ * @file led_task.cpp
+ * @brief LED status patterns for tremor/dyskinesia/FOG and BLE connection.
+ */
+
 #include "tasks/led_task.hpp"
 #include "mbed.h"
 #include "bsp/led.hpp"
@@ -12,6 +17,11 @@ void led_task() {
     bool led_direction = true;
 
     while (true) {
+        // Primary status indication from the analysis task:
+        // - FOG: blink blue/yellow
+        // - Dyskinesia: steady yellow
+        // - Tremor: steady blue
+        // - None: off
         if (get_fog_status()) {
             for (int i = 0; i < 5; i++) {
                 led_blue_yellow_on();
@@ -28,12 +38,14 @@ void led_task() {
         }
         
 
+        // Secondary status: BLE connection on green LED2.
         if (ble_is_connected()) {
             led_green_2_set(1);
         } else {
             led_green_2_set(0);
         }
 
+        // Green LED1 "breathing" animation to show the system is alive.
         if (led_direction) {
             led_value += 0.025f;
             if (led_value > 0.75f) {

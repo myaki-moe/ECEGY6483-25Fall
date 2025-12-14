@@ -1,3 +1,8 @@
+/**
+ * @file bool_filter.cpp
+ * @brief Implementation of the boolean debouncer / hysteresis filter.
+ */
+
 #include "bool_filter.hpp"
 
 
@@ -9,13 +14,13 @@ void bool_filter_init(bool_filter_t *filter, uint8_t filter_threshold) {
 }
 
 bool bool_filter_update(bool_filter_t *filter, bool new_value) {
-    // 如果新值与目标状态不同，重置计数器
+    // If the input changes direction, reset the counter and track new target.
     if (new_value != filter->target_state) {
         filter->target_state = new_value;
         filter->counter = 0;
     }
     
-    // 如果目标状态与当前状态不同，累加计数器
+    // If target differs from current output, count consecutive confirmations.
     if (filter->target_state != filter->current_state) {
         filter->counter++;
         if (filter->counter >= filter->threshold) {

@@ -1,3 +1,11 @@
+/**
+ * @file test_task.cpp
+ * @brief Periodic system diagnostics (thread stats and CPU usage).
+ *
+ * This task is intentionally low priority. It is meant for development and
+ * profiling rather than core functionality.
+ */
+
 #include "tasks/test_task.hpp"
 #include "mbed.h"
 #include "mbed_stats.h"
@@ -29,14 +37,14 @@ void test_task() {
         
         mbed_stats_cpu_get(&cpu_stats);
     
-        // 计算 CPU 使用率百分比
+        // Compute CPU usage from idle time delta over the sampling period.
         uint64_t diff_usec = (cpu_stats.idle_time - prev_idle_time);
         uint8_t idle = (diff_usec * 100) / (SAMPLE_TIME_MS * 1000);
-        uint8_t usage = 100 - idle;  // CPU 使用率
+        uint8_t usage = 100 - idle;
         prev_idle_time = cpu_stats.idle_time;
         
-        // 打印统计信息
-        LOG_DEBUG("CPU Usage: %d%%   Idle: %d%%", usage, idle);     // 占用率
+        // Print summary.
+        LOG_DEBUG("CPU Usage: %d%%   Idle: %d%%", usage, idle);
 
         ThisThread::sleep_for(SAMPLE_TIME_MS * 1ms);
     }

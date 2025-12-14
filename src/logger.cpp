@@ -1,11 +1,16 @@
+/**
+ * @file logger.cpp
+ * @brief Implementation of the lightweight printf-style logger.
+ */
+
 #include "logger.hpp"
 #include "mbed.h"
 #include "bsp/serial.hpp"
 
-// 全局日志级别（默认INFO，显示INFO及以上日志）
+// Global log level (default: INFO).
 LogLevel_t g_log_level = LOG_LEVEL_INFO;
 
-// 日志级别字符串
+// Level names (fixed width helps align logs).
 static const char* log_level_strings[] = {
     "DEBUG",
     "INFO ",
@@ -14,14 +19,14 @@ static const char* log_level_strings[] = {
     "FATAL"
 };
 
-// 日志级别颜色
+// Optional per-level color (enable by defining COLORED_LOG).
 #ifdef COLORED_LOG
 static const char* log_level_colors[] = {
-    COLOR_CYAN,    // DEBUG - 青色
-    COLOR_GREEN,   // INFO  - 绿色
-    COLOR_YELLOW,  // WARN  - 黄色
-    COLOR_RED,     // ERROR - 红色
-    COLOR_MAGENTA  // FATAL - 品红色
+    COLOR_CYAN,    // DEBUG
+    COLOR_GREEN,   // INFO
+    COLOR_YELLOW,  // WARN
+    COLOR_RED,     // ERROR
+    COLOR_MAGENTA  // FATAL
 };
 char* log_level_colors_reset = COLOR_RESET;
 #else
@@ -35,27 +40,27 @@ static const char* log_level_colors[] = {
 const char* log_level_colors_reset = "\0";
 #endif
 
-// 设置全局日志级别
+// Set global log level.
 void log_set_level(LogLevel_t level) {
     g_log_level = level;
 }
 
-// 核心日志打印函数
+// Core log print function (thread-safe via serial lock).
 void log_print(LogLevel_t level, const char* format, ...) {
-    // 过滤低于设定级别的日志
+    // Filter out messages below the configured level.
     if (level < g_log_level) {
         return;
     }
 
     serial_lock();
 
-    // 获取时间戳
+    // Timestamp from RTOS kernel clock.
     auto now = Kernel::Clock::now().time_since_epoch();
     uint64_t ms_total = chrono::duration_cast<chrono::milliseconds>(now).count();
     unsigned long seconds = static_cast<unsigned long>(ms_total / 1000);
     unsigned long milliseconds = static_cast<unsigned long>(ms_total % 1000);
 
-    // 打印日志头部（时间戳、级别、任务名）
+    // Log header: [sec.msec] [LEVEL] [thread_name]
     printf("%s[%5lu.%03lu] [%s] [%-15s]%s ",
             log_level_colors[level],
             seconds,
@@ -64,13 +69,13 @@ void log_print(LogLevel_t level, const char* format, ...) {
             ThisThread::get_name(),
             log_level_colors_reset);
 
-    // 打印用户消息
+    // User message (printf-style).
     va_list args;
     va_start(args, format);
     vprintf(format, args);
     va_end(args);
 
-    // 换行
+    // Newline (CRLF for serial terminals).
     printf("\r\n");
 
     serial_unlock();

@@ -1,3 +1,8 @@
+/**
+ * @file imu.cpp
+ * @brief Implementation of the LSM6DSL IMU BSP (I2C + data-ready interrupt).
+ */
+
 #include "bsp/imu.hpp"
 #include "mbed.h"
 
@@ -5,7 +10,7 @@ I2C *imu_i2c = nullptr;
 InterruptIn *imu_int1_pin = nullptr;
 EventFlags *imu_data_ready_flag = nullptr;
 
-// Write a single byte to a register
+// Write a single byte to a register.
 bool imu_write_reg(uint8_t reg, uint8_t val) {
     // Create buffer with register address and value
     char buf[2] = {(char)reg, (char)val};
@@ -13,7 +18,7 @@ bool imu_write_reg(uint8_t reg, uint8_t val) {
     return (imu_i2c->write(LSM6DSL_ADDR, buf, 2) == 0);
 }
 
-// Read a single byte from a register
+// Read a single byte from a register.
 bool imu_read_reg(uint8_t reg, uint8_t &val) {
     // Store register address to read from
     char r = (char)reg;
@@ -26,7 +31,7 @@ bool imu_read_reg(uint8_t reg, uint8_t &val) {
     return true;
 }
 
-// Read 16-bit signed integer from two consecutive registers
+// Read a 16-bit signed integer from two consecutive registers.
 bool imu_read_int16(uint8_t reg_low, int16_t &val) {
     uint8_t lo, hi;
     // Read low byte
@@ -40,7 +45,7 @@ bool imu_read_int16(uint8_t reg_low, int16_t &val) {
 
 bool imu_read_acc_data(float32_t* acc) {
     int16_t acc_raw;
-    // Read X, Y, Z axis in order (OUTX_L_XL, OUTY_L_XL, OUTZ_L_XL are consecutive every 2 bytes)
+    // Read X, Y, Z axes in order (registers are consecutive every 2 bytes).
     for (int i = 0; i < 3; i++) {
         if (!imu_read_int16(OUTX_L_XL + i*2, acc_raw)) return false;
         acc[i] = (float32_t)acc_raw * ACC_SENSITIVITY;
@@ -50,9 +55,10 @@ bool imu_read_acc_data(float32_t* acc) {
 
 bool imu_read_gyro_data(float32_t* gyro) {
     int16_t gyro_raw;
-    // Read X, Y, Z axis in order (OUTX_L_G, OUTY_L_G, OUTZ_L_G are consecutive every 2 bytes)
+    // Read X, Y, Z axes in order (registers are consecutive every 2 bytes).
     for (int i = 0; i < 3; i++) {
         if (!imu_read_int16(OUTX_L_G + i*2, gyro_raw)) return false;
+        // Convert to rad/s (datasheet sensitivity -> deg/s -> rad/s).
         gyro[i] = (float32_t)gyro_raw * GYRO_SENSITIVITY / 360.0f * 2.0f * M_PI;
     }
     return true;
@@ -63,8 +69,9 @@ bool imu_init() {
     imu_i2c = new I2C(PB_11, PB_10);
     imu_i2c->frequency(400000);
     imu_int1_pin = new InterruptIn(LSM6DSL_INT1_PIN, PullDown);
-    imu_int1_pin->rise([] { imu_data_ready_flag->set(1); });
     imu_data_ready_flag = new EventFlags();
+    // Data-ready interrupt: set bit 0 in the flag.
+    imu_int1_pin->rise([] { imu_data_ready_flag->set(1); });
     uint8_t who;
     if (!imu_read_reg(WHO_AM_I, who) || who != 0x6A) return false;
     imu_write_reg(CTRL3_C, 0x44); 

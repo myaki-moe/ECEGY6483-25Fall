@@ -1,3 +1,21 @@
+/**
+ * @file analysis_task.cpp
+ * @brief Frequency-domain motion detection (tremor, dyskinesia, FOG).
+ *
+ * This module consumes the latest gyro PSD produced by `fft_task` and applies
+ * simple band-energy/peak heuristics to classify motion patterns:
+ * - Tremor: dominant energy around 3–5 Hz
+ * - Dyskinesia: dominant energy around 5–7 Hz
+ * - Freezing of gait (FOG): high "freeze" energy (3–8 Hz) relative to
+ *   locomotion energy (0.5–3 Hz) while the subject is walking.
+ *
+ * Implementation notes:
+ * - PSD is indexed by FFT bin k. Bin frequency is: f_k = k * Fs / N
+ *   where Fs is sampling_rate and N is fft_size.
+ * - We add a small epsilon (1e-6) to denominators to avoid divide-by-zero.
+ * - The boolean filters smooth results to prevent flickering.
+ */
+
 #include "tasks/analysis_task.hpp"
 #include "mbed.h"
 #include "logger.hpp"
@@ -11,6 +29,17 @@ bool_filter_t dyskinesia_filter;
 bool_filter_t fog_filter;
 
 
+/**
+ * @brief Find the peak PSD value and its corresponding frequency in a band.
+ *
+ * @param psd Pointer to a single-sided PSD array (length fft_size/2).
+ * @param fft_size FFT size N used to compute the PSD.
+ * @param sampling_rate Sampling rate Fs (Hz).
+ * @param min_freq Lower band edge (Hz).
+ * @param max_freq Upper band edge (Hz).
+ * @param peak_power Output: peak power within the band.
+ * @param peak_freq Output: frequency (Hz) of that peak.
+ */
 void find_peak_power(float32_t* psd, uint32_t fft_size, float32_t sampling_rate, float32_t min_freq, float32_t max_freq, float32_t* peak_power, float32_t* peak_freq) {
     float32_t peak_power_temp = 0.0f;
     float32_t peak_freq_temp = 0.0f;
@@ -26,6 +55,16 @@ void find_peak_power(float32_t* psd, uint32_t fft_size, float32_t sampling_rate,
     *peak_freq = peak_freq_temp;
 }
 
+/**
+ * @brief Sum PSD values across a frequency band (simple band-power estimate).
+ *
+ * @param psd Pointer to a single-sided PSD array (length fft_size/2).
+ * @param fft_size FFT size N used to compute the PSD.
+ * @param sampling_rate Sampling rate Fs (Hz).
+ * @param min_freq Lower band edge (Hz).
+ * @param max_freq Upper band edge (Hz).
+ * @return Sum of PSD bins between min_freq and max_freq (inclusive).
+ */
 float32_t find_total_band_power(float32_t* psd, uint32_t fft_size, float32_t sampling_rate, float32_t min_freq, float32_t max_freq) {
     uint32_t min_idx = (uint32_t)(min_freq * fft_size / sampling_rate);
     uint32_t max_idx = (uint32_t)(max_freq * fft_size / sampling_rate);
@@ -36,6 +75,22 @@ float32_t find_total_band_power(float32_t* psd, uint32_t fft_size, float32_t sam
     return total_band_power;
 }
 
+/**
+ * @brief Detect tremor using peak frequency and relative band power.
+ *
+ * Decision logic (gyro PSD):
+ * - Find the dominant peak in BAND_MIN_FREQ..BAND_MAX_FREQ (3–12 Hz).
+ * - Compute tremor band power (3–5 Hz) and total band power (3–12 Hz).
+ * - Require:
+ *   1) Peak frequency lies inside tremor band (3–5 Hz)
+ *   2) Tremor band contributes a large fraction of total power
+ *   3) Peak power exceeds an absolute minimum threshold
+ *
+ * @param psd Single-sided gyro PSD (length fft_size/2).
+ * @param fft_size FFT size N.
+ * @param sampling_rate Sampling rate Fs (Hz).
+ * @return true if tremor is detected on this axis.
+ */
 bool detectTremor(float32_t* psd, uint32_t fft_size, float32_t sampling_rate) {
     float32_t band_peak_power = 0.0f;
     float32_t band_peak_freq = 0.0f;
@@ -56,6 +111,17 @@ bool detectTremor(float32_t* psd, uint32_t fft_size, float32_t sampling_rate) {
     return (freq_check && relative_power_check && absolute_power_check);
 }
 
+/**
+ * @brief Detect dyskinesia using peak frequency and relative band power.
+ *
+ * Uses the same structure as tremor detection but with the dyskinesia band
+ * (5–7 Hz). Keeping the structure consistent makes thresholds easier to tune.
+ *
+ * @param psd Single-sided gyro PSD (length fft_size/2).
+ * @param fft_size FFT size N.
+ * @param sampling_rate Sampling rate Fs (Hz).
+ * @return true if dyskinesia is detected on this axis.
+ */
 bool detectDyskinesia(float32_t* psd, uint32_t fft_size, float32_t sampling_rate) {
     float32_t band_peak_power = 0.0f;
     float32_t band_peak_freq = 0.0f;
@@ -76,25 +142,47 @@ bool detectDyskinesia(float32_t* psd, uint32_t fft_size, float32_t sampling_rate
     return (freq_check && relative_power_check && absolute_power_check);
 }
 
+// Simple walking-state estimator with hysteresis (prevents rapid toggling).
 static int walking_state_counter = 0;
 static bool is_walking = false;
 
+/**
+ * @brief Detect freezing-of-gait (FOG) using the Freeze Index (FI).
+ *
+ * Freeze Index is defined as:
+ *   FI = P_freeze / (P_locomotion + eps)
+ *
+ * where:
+ * - P_freeze is band power in 3–8 Hz (leg trembling/shuffling during freeze)
+ * - P_locomotion is band power in 0.5–3 Hz (normal walking rhythm)
+ *
+ * We also require that the system believes we are in a walking state (based on
+ * locomotion power over time). This avoids flagging FOG when the person is
+ * simply standing still.
+ *
+ * @param psd Single-sided gyro PSD (length fft_size/2).
+ * @param fft_size FFT size N.
+ * @param sampling_rate Sampling rate Fs (Hz).
+ * @return true if FOG is detected on this axis.
+ */
 bool detectFOG(float32_t* psd, uint32_t fft_size, float32_t sampling_rate) {
     
-    // 1. 计算冻结频段能量（3-8 Hz）
+    // 1) Compute freeze-band power (3–8 Hz).
     float32_t freeze_power = find_total_band_power(psd, fft_size, sampling_rate, 
                                                    FOG_FREEZE_MIN_FREQ, FOG_FREEZE_MAX_FREQ);
     
-    // 2. 计算行走频段能量（0.5-3 Hz）
+    // 2) Compute locomotion-band power (0.5–3 Hz).
     float32_t locomotion_power = find_total_band_power(psd, fft_size, sampling_rate, 
                                                        FOG_LOCOMOTION_MIN_FREQ, FOG_LOCOMOTION_MAX_FREQ);
     
-    // 3. 更新行走状态（基于行走频段能量）
+    // 3) Update walking state with hysteresis based on locomotion-band power.
+    //    We require sustained locomotion power to enter "walking" state and
+    //    sustained low power to leave it.
     if (locomotion_power > LOCOMOTION_POWER_THRESHOLD) {
         walking_state_counter++;
         if (walking_state_counter >= WALKING_STATE_HISTORY) {
             is_walking = true;
-            walking_state_counter = WALKING_STATE_HISTORY; // 限制计数器
+            walking_state_counter = WALKING_STATE_HISTORY; // clamp counter
         }
     } else {
         walking_state_counter--;
@@ -104,26 +192,32 @@ bool detectFOG(float32_t* psd, uint32_t fft_size, float32_t sampling_rate) {
         }
     }
     
-    // 4. 计算Freeze Index (FI)
+    // 4) Compute Freeze Index (FI). Epsilon avoids division by zero.
     float32_t freeze_index = freeze_power / (locomotion_power + 1e-6);
 
-    // 6. FOG判断逻辑
+    // 5) FOG decision logic.
     bool fi_check = (freeze_index > FOG_FI_THRESHOLD);
-    bool walking_check = is_walking;  // 必须在行走状态
-    bool freeze_power_check = (freeze_power > 0.05f); // 确保有高频震颤
+    bool walking_check = is_walking;  // require walking state
+    bool freeze_power_check = (freeze_power > 0.05f); // ensure meaningful freeze-band energy
     
     LOG_DEBUG("FI: %.2f <%s>, walking: <%s>, freeze_pwr: %.3f <%s>", 
         freeze_index, fi_check ? "true " : "false", 
         is_walking ? "true " : "false",
         freeze_power, freeze_power_check ? "true " : "false");
     
-    // FOG检测条件：
-    // 1. Freeze Index超过阈值
-    // 2. 之前处于行走状态
-    // 3. 有明显的高频震颤能量
+    // FOG detection requires:
+    // 1) Freeze Index above threshold
+    // 2) Walking state is true (context: freezing during walking)
+    // 3) Sufficient absolute freeze-band power (avoid noise-only triggers)
     return (fi_check && walking_check && freeze_power_check);
 }
 
+/**
+ * @brief RTOS task loop: read latest FFT result, run detectors, update filters.
+ *
+ * We run detectors on each gyro axis and then OR the three decisions to form an
+ * overall status. The boolean filters provide temporal smoothing.
+ */
 void analysis_task() {
     LOG_INFO("Analysis Task Started");
 
@@ -149,7 +243,7 @@ void analysis_task() {
                 dyskinesia_result[i] = detectDyskinesia(result->gyro_psd[i], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
             }
             for (int i = 0; i < 3; i++) {
-                fog_result[i] = detectFOG(result->accel_psd[i], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
+                fog_result[i] = detectFOG(result->gyro_psd[i], FFT_BUFFER_SIZE, IMU_SAMPLE_RATE_HZ);
             }
             
             bool is_tremor = tremor_result[0] || tremor_result[1] || tremor_result[2];
@@ -191,14 +285,26 @@ void analysis_task() {
 }
 
 
+/**
+ * @brief Get the current filtered tremor status.
+ * @return true if tremor is detected after filtering.
+ */
 bool get_tremor_status() {
     return bool_filter_get_state(&tremor_filter);
 }
 
+/**
+ * @brief Get the current filtered dyskinesia status.
+ * @return true if dyskinesia is detected after filtering.
+ */
 bool get_dyskinesia_status() {
     return bool_filter_get_state(&dyskinesia_filter);
 }
 
+/**
+ * @brief Get the current filtered FOG status.
+ * @return true if FOG is detected after filtering.
+ */
 bool get_fog_status() {
     return bool_filter_get_state(&fog_filter);
 }

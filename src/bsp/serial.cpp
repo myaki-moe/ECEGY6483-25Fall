@@ -1,3 +1,8 @@
+/**
+ * @file serial.cpp
+ * @brief Implementation of the serial console and its mutex.
+ */
+
 #include "bsp/serial.hpp"
 #include "mbed.h"
 
@@ -9,6 +14,7 @@ FileHandle *mbed::mbed_override_console(int) {
 }
 
 bool serial_init() {
+    // USBTX/USBRX are the board default serial pins for the console.
     serial_port = new BufferedSerial(USBTX, USBRX, 115200);
     serial_mutex = new Mutex();
     return true;

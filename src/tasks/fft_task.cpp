@@ -1,3 +1,17 @@
+/**
+ * @file fft_task.cpp
+ * @brief Implementation of FFT/PSD processing and result-buffer management.
+ *
+ * Data flow (high level):
+ * - `imu_task` publishes samples to `imu_mail_box`.
+ * - This task maintains a sliding window of the latest FFT_BUFFER_SIZE samples
+ *   per axis using mirror buffers.
+ * - For each new sample, it computes a real FFT and derives single-sided
+ *   magnitude spectrum and PSD (power spectral density) for accel and gyro.
+ * - Results are stored in a small ring of `fft_result_t` buffers protected by
+ *   per-buffer mutexes.
+ */
+
 #include "tasks/fft_task.hpp"
 #include "mbed.h"
 #include "arm_math.h"
@@ -8,6 +22,13 @@
 
 
 arm_rfft_fast_instance_f32 fft_handler;
+/**
+ * @brief PSD normalization scale factor.
+ *
+ * We square the magnitude spectrum to get power and then scale it so that the
+ * values are comparable across configurations. This is a simple normalization
+ * based on window length and sampling rate.
+ */
 float32_t scale_factor = 1.0f / (FFT_BUFFER_SIZE * IMU_SAMPLE_RATE_HZ);
 
 mirror_buffer_t *accel_sensor_data_buffer[3];
@@ -17,6 +38,15 @@ float32_t fft_output[FFT_BUFFER_SIZE];
 fft_result_t fft_results[FFT_BUFFER_NUM];
 
 
+/**
+ * @brief RTOS task entry: compute FFT/PSD continuously from IMU samples.
+ *
+ * Notes:
+ * - We wait until we have a full window (FFT_BUFFER_SIZE samples). After that,
+ *   each incoming sample updates the sliding window and triggers a new FFT.
+ * - CMSIS-DSP `arm_rfft_fast_f32` computes an efficient real-input FFT.
+ * - We store only the single-sided spectrum (0..Nyquist), hence N/2 bins.
+ */
 void fft_task() {
     LOG_INFO("FFT Task Started");
 
@@ -63,10 +93,12 @@ void fft_task() {
                     continue;
                 }
 
-                // 1. 执行实数FFT
-                // 2. 计算幅度谱
-                // 3. 计算功率谱密度
-                // 4. 归一化
+                // Processing steps per axis:
+                // 1) Copy the latest sliding-window samples into fft_input.
+                // 2) Real FFT: time-domain -> frequency-domain.
+                // 3) Magnitude spectrum |X[k]| for k=0..N/2-1 (single-sided).
+                // 4) Power: |X[k]|^2 (simple PSD estimate).
+                // 5) Scale/normalize to keep thresholds stable across configs.
                 for (int i = 0; i < 3; i++) {
                     memcpy(fft_input, (float32_t*)mirror_buffer_get_window(accel_sensor_data_buffer[i]), FFT_BUFFER_SIZE * sizeof(float32_t));
                     arm_rfft_fast_f32(&fft_handler, fft_input, fft_output, 0);
@@ -97,6 +129,15 @@ void fft_task() {
     }
 }
 
+/**
+ * @brief Find the oldest (least recently updated) result buffer and lock it.
+ *
+ * Why "oldest": the writer wants to overwrite a buffer that the reader is least
+ * likely to be using. We use `trylock()` to avoid blocking if a buffer is
+ * currently being read.
+ *
+ * @return Locked buffer pointer, or nullptr if all buffers are busy.
+ */
 fft_result_t *fft_find_and_lock_oldest_result() {
     int oldest_idx = -1;
     auto oldest_time = std::chrono::time_point<rtos::Kernel::Clock>::max();
@@ -117,6 +158,15 @@ fft_result_t *fft_find_and_lock_oldest_result() {
     return &fft_results[oldest_idx];
 }
 
+/**
+ * @brief Find the latest (most recently updated) result buffer and lock it.
+ *
+ * Consumers (e.g., analysis_task) generally want the newest spectrum. We use
+ * `trylock()` to avoid blocking the producer; if nothing can be locked, the
+ * caller can simply retry later.
+ *
+ * @return Locked buffer pointer, or nullptr if none can be locked now.
+ */
 fft_result_t *fft_find_and_lock_latest_result() {
     int newest_idx = -1;
     auto newest_time = std::chrono::time_point<rtos::Kernel::Clock>::min();

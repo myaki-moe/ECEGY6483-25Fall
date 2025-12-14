@@ -3,20 +3,26 @@
 #include <string.h>
 
 /**
- * 创建镜像缓冲区
- * 
- * @param window_size  窗口大小（需要保存多少个数据点）
- * @param element_size 单个元素大小（如 sizeof(float)）
- * @return 缓冲区句柄，失败返回NULL
- * 
- * 示例：
- *   mirror_buffer_t *buf = mirror_buffer_create(156, sizeof(float));
+ * @file buffer.cpp
+ * @brief Implementation of the mirror circular buffer.
  */
- mirror_buffer_t* mirror_buffer_create(size_t window_size, size_t element_size) {
+
+/**
+ * @brief Create a mirror buffer.
+ *
+ * The buffer allocates 2*window_size elements. Each pushed element is written
+ * twice: at index i and i+window_size. This guarantees the last window is
+ * always contiguous in memory.
+ *
+ * @param window_size Window length (elements).
+ * @param element_size Element size in bytes.
+ * @return Buffer handle, or NULL on allocation failure.
+ */
+mirror_buffer_t* mirror_buffer_create(size_t window_size, size_t element_size) {
     mirror_buffer_t *mb = (mirror_buffer_t*)malloc(sizeof(mirror_buffer_t));
     if (!mb) return NULL;
     
-    // 分配2倍空间（镜像区）
+    // Allocate 2x storage (mirror region).
     size_t buffer_bytes = window_size * 2 * element_size;
     mb->buffer = malloc(buffer_bytes);
     if (!mb->buffer) {
@@ -24,7 +30,7 @@
         return NULL;
     }
     
-    // 初始化为0
+    // Initialize memory to 0 for predictable startup behavior.
     memset(mb->buffer, 0, buffer_bytes);
     
     mb->window_size = window_size;
@@ -35,7 +41,7 @@
 }
 
 /**
- * 销毁镜像缓冲区
+ * @brief Destroy a mirror buffer.
  */
 void mirror_buffer_destroy(mirror_buffer_t *mb) {
     if (mb) {
@@ -45,46 +51,35 @@ void mirror_buffer_destroy(mirror_buffer_t *mb) {
 }
 
 /**
- * 写入单个数据点
- * 
- * @param mb   缓冲区句柄
- * @param data 数据指针（指向要写入的单个元素）
- * 
- * 示例：
- *   float value = 1.23f;
- *   mirror_buffer_push(buf, &value);
+ * @brief Push one element into the buffer.
+ * @param mb Buffer handle.
+ * @param data Pointer to a single element to store.
  */
 void mirror_buffer_push(mirror_buffer_t *mb, const void *data) {
     if (!mb || !data) return;
     
-    // 计算两个镜像位置的字节偏移
+    // Compute byte offsets for the primary and mirrored positions.
     size_t offset1 = mb->write_index * mb->element_size;
     size_t offset2 = (mb->write_index + mb->window_size) * mb->element_size;
     
-    // 同时写入两个位置
+    // Write to both positions so a contiguous window is always available.
     uint8_t *buf_ptr = (uint8_t*)mb->buffer;
     memcpy(buf_ptr + offset1, data, mb->element_size);
     memcpy(buf_ptr + offset2, data, mb->element_size);
     
-    // 更新写指针（循环）
+    // Advance write pointer (circular).
     mb->write_index = (mb->write_index + 1) % mb->window_size;
 }
 
 /**
- * 获取连续窗口指针（Zero-Copy！）
- * 
- * @param mb 缓冲区句柄
- * @return 指向最新window_size个数据点的连续指针
- * 
- * 示例：
- *   float *window = (float*)mirror_buffer_get_window(buf);
- *   // window[0]是最旧的，window[window_size-1]是最新的
- *   arm_rfft_fast_f32(&S, window, output, 0);
+ * @brief Get a contiguous pointer to the current window (zero-copy).
+ * @param mb Buffer handle.
+ * @return Pointer to the window (oldest -> newest).
  */
 void* mirror_buffer_get_window(mirror_buffer_t *mb) {
     if (!mb) return NULL;
     
-    // 从当前写指针开始，往前数window_size个点就是完整窗口
+    // Because of mirroring, starting at write_index yields a contiguous window.
     uint8_t *buf_ptr = (uint8_t*)mb->buffer;
     size_t offset = mb->write_index * mb->element_size;
     
@@ -92,15 +87,10 @@ void* mirror_buffer_get_window(mirror_buffer_t *mb) {
 }
 
 /**
- * 获取指定偏移的窗口指针
- * 
- * @param mb     缓冲区句柄
- * @param offset 相对最新数据的偏移（0=最新，1=前一个周期...）
- * @return 连续窗口指针
- * 
- * 示例：
- *   // 获取上一个3秒窗口
- *   float *prev_window = (float*)mirror_buffer_get_window_offset(buf, 1);
+ * @brief Get a contiguous pointer to a previous window.
+ * @param mb Buffer handle.
+ * @param offset Window offset in full cycles (0=current, 1=previous, ...).
+ * @return Pointer to the requested window (oldest -> newest).
  */
 void* mirror_buffer_get_window_offset(mirror_buffer_t *mb, uint32_t offset) {
     if (!mb) return NULL;

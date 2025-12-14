@@ -1,3 +1,12 @@
+/**
+ * @file ble_task.cpp
+ * @brief BLE GATT service that reports current motion status as a string.
+ *
+ * The device advertises a custom service containing one read-only, notify-only
+ * characteristic. The characteristic value is a null-terminated ASCII string:
+ * "TREMOR", "DYSKINESIA", "FOG", or "NONE".
+ */
+
 #include "tasks/ble_task.hpp"
 #include "mbed.h"
 #include "ble/BLE.h"
@@ -44,6 +53,11 @@ GattService TREMOR_Service(TREMOR_SERVICE_UUID, charTable, 1);
 Ticker notification_ticker;
 bool device_connected = false;
 
+/**
+ * @brief Send a status notification if a central is connected.
+ *
+ * The value is derived from the analysis task's filtered status getters.
+ */
 void send_TREMOR_notification() {
     if (!device_connected) {
         LOG_DEBUG("No device connected, skipping notification");
@@ -78,6 +92,7 @@ public:
             device_connected = true;
             strcpy((char*)TREMORValue, TREMOR_STRING);
             
+            // Periodically push notifications via the event queue context.
             notification_ticker.attach([]() {
                 event_queue.call(send_TREMOR_notification);
             }, 1s);
@@ -102,9 +117,11 @@ void on_ble_init_complete(BLE::InitializationCompleteCallbackContext *params) {
         return;
     }
     
+    // Register service/characteristic.
     strcpy((char*)TREMORValue, TREMOR_STRING);
     ble_interface.gattServer().addService(TREMOR_Service);
     
+    // Build advertising payload (flags + device name).
     uint8_t adv_buffer[LEGACY_ADVERTISING_MAX_SIZE];
     AdvertisingDataBuilder adv_data(adv_buffer);
     adv_data.setFlags();
@@ -127,12 +144,19 @@ void on_ble_init_complete(BLE::InitializationCompleteCallbackContext *params) {
     LOG_INFO("BLE advertising started as %s", BLE_DEVICE_NAME);
 }
 
+/**
+ * @brief Schedule BLE stack processing on the event queue.
+ *
+ * This keeps BLE processing inside the event queue thread, avoiding doing BLE
+ * work directly in interrupt contexts.
+ */
 void schedule_ble_events(BLE::OnEventsToProcessCallbackContext *context) {
     event_queue.call(callback(&ble_interface, &BLE::processEvents));
 }
 
 void ble_task() {
     LOG_INFO("BLE Task Started");
+    // BLE runs inside the event queue forever.
     ble_interface.onEventsToProcess(schedule_ble_events);
     ble_interface.init(on_ble_init_complete);
     event_queue.dispatch_forever();

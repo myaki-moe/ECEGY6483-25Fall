@@ -1,3 +1,11 @@
+/**
+ * @file led.cpp
+ * @brief Implementation of board LED control.
+ *
+ * Note: On this board, LED3 is shared between blue and yellow. The code swaps
+ * between DigitalIn (off/high-Z) and PwmOut (driving) to represent states.
+ */
+
 #include "bsp/led.hpp"
 #include "mbed.h"
 
@@ -11,6 +19,7 @@ bool led_init() {
     led_green_1_out->period_us(100);
     led_green_2_out = new PwmOut(LED2);
     led_green_2_out->period_us(100);
+    // Keep LED3 "off" by default using input mode (board wiring dependent).
     led_blue_yellow_in = new DigitalIn(LED3, PullNone);
     return true;
 }
@@ -24,6 +33,7 @@ void led_green_2_set(float value) {
 }
 
 void led_blue_on() {
+    // Ensure LED3 is in output mode so we can drive it.
     if (led_blue_yellow_in != nullptr) {
         delete led_blue_yellow_in;
         led_blue_yellow_in = nullptr;
@@ -36,6 +46,7 @@ void led_blue_on() {
 }
 
 void led_yellow_on() {
+    // Ensure LED3 is in output mode so we can drive it.
     if (led_blue_yellow_in != nullptr) {
         delete led_blue_yellow_in;
         led_blue_yellow_in = nullptr;
@@ -48,6 +59,7 @@ void led_yellow_on() {
 }
 
 void led_blue_yellow_on() {
+    // Ensure LED3 is in output mode so we can drive it.
     if (led_blue_yellow_in != nullptr) {
         delete led_blue_yellow_in;
         led_blue_yellow_in = nullptr;
@@ -64,6 +76,7 @@ void led_blue_yellow_off() {
     if (led_blue_yellow_out != nullptr) {
         delete led_blue_yellow_out;
         led_blue_yellow_out = nullptr;
+        // Return LED3 to input mode (high impedance).
         led_blue_yellow_in = new DigitalIn(LED3, PullNone);
     }
 }

@@ -1,3 +1,8 @@
+/**
+ * @file main.cpp
+ * @brief System entry point: hardware init, task startup, fatal error handling.
+ */
+
 #include "main.hpp"
 #include "mbed.h"
 #include "bsp/led.hpp"
@@ -14,6 +19,12 @@
 
 EventFlags *program_fatal_error_flag = nullptr;
 
+/**
+ * @brief Last-resort handler for unrecoverable failures.
+ *
+ * This function never returns. It provides a visible LED pattern and keeps
+ * printing a fatal log message to help debugging on the bench.
+ */
 void fatal_error_handler() {
     while (true) {
         led_green_1_set(1);
@@ -35,6 +46,7 @@ void trigger_fatal_error() {
 
 int main() {
 
+    // Bring up minimal I/O first so we can signal failures early.
     if (!led_init()) {
         fatal_error_handler();
     }
@@ -71,9 +83,15 @@ int main() {
     }
     LOG_INFO("IMU initialization [OK]");
 
+    // Allocated after basic init; tasks use this to request a global shutdown.
     program_fatal_error_flag = new EventFlags();
 
     LOG_INFO("Starting tasks...");
+    // Task priorities reflect timing sensitivity:
+    // - IMU sampling must be most deterministic (Realtime).
+    // - FFT and analysis should run promptly on fresh sensor data (High).
+    // - LED/BLE are user-facing and can be lower priority (Normal).
+    // - Test task is non-critical (Low).
     Thread imu_thread(osPriorityRealtime, OS_STACK_SIZE, nullptr, "imu_task");
     Thread fft_thread(osPriorityHigh, OS_STACK_SIZE, nullptr, "fft_task");
     Thread analysis_thread(osPriorityHigh, OS_STACK_SIZE, nullptr, "analysis_task");
@@ -90,6 +108,8 @@ int main() {
 
     LOG_INFO("Tasks startup complete");
 
+    // Main thread becomes the "supervisor": wait for any fatal error request,
+    // then stop all tasks and fall into the fatal handler.
     if (program_fatal_error_flag->wait_all(1, osWaitForever) == 1) {
         LOG_FATAL("Program fatal error, terminating all tasks");
 
