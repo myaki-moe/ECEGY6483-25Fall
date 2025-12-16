@@ -88,7 +88,7 @@ public:
     virtual void onConnectionComplete(const
         ble::ConnectionCompleteEvent &event) {
         if (event.getStatus() == BLE_ERROR_NONE) {
-            LOG_INFO("BLE device connected");
+            // LOG_INFO("BLE device connected");
             device_connected = true;
             strcpy((char*)TREMORValue, TREMOR_STRING);
             
@@ -104,7 +104,7 @@ public:
         device_connected = false;
         notification_ticker.detach();
         ble_interface.gap().startAdvertising(ble::LEGACY_ADVERTISING_HANDLE);
-        LOG_INFO("BLE device disconnected, restarting advertising");
+        // LOG_INFO("BLE device disconnected, restarting advertising");
     }
 };
 

@@ -5,7 +5,7 @@
  * @brief BLE task that advertises a simple status characteristic.
  */
 
-#define BLE_DEVICE_NAME "Parkinson's-Monitor-Group-46"
+#define BLE_DEVICE_NAME "Parkinson-Monitor-Group-46"
 
 /**
  * @brief RTOS task entry: initialize BLE stack and run the event queue.

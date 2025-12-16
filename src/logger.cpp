@@ -7,6 +7,8 @@
 #include "mbed.h"
 #include "bsp/serial.hpp"
 
+#define COLORED_LOG
+
 // Global log level (default: INFO).
 LogLevel_t g_log_level = LOG_LEVEL_INFO;
 

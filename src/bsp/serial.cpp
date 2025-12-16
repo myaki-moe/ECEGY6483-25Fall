@@ -15,7 +15,7 @@ FileHandle *mbed::mbed_override_console(int) {
 
 bool serial_init() {
     // USBTX/USBRX are the board default serial pins for the console.
-    serial_port = new BufferedSerial(USBTX, USBRX, 115200);
+    serial_port = new BufferedSerial(USBTX, USBRX, 1000000);
     serial_mutex = new Mutex();
     return true;
 }

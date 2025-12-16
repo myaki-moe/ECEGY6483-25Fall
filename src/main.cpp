@@ -53,7 +53,7 @@ int main() {
     if (!serial_init()) {
         fatal_error_handler();
     }
-
+    ThisThread::sleep_for(5s);
     LOG_INFO("");
     LOG_INFO("========================================");
     LOG_INFO("  Parkinson's Motion Detection System  ");
